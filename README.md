@@ -4,7 +4,7 @@ API Gateway responsavel por receber videos, registrar tarefas e disponibilizar s
 
 ## Responsabilidades
 
-- autenticar com `X-User` e `X-Password`;
+- autenticar com tokens JWT;
 - receber videos em `POST /upload`;
 - salvar o video no storage local;
 - registrar jobs no PostgreSQL;
@@ -28,8 +28,15 @@ O processamento do video e executado pelo repositorio `video-processor-worker`.
 As rotas de upload, status e download exigem:
 
 ```text
-X-User: admin
-X-Password: admin
+Authorization: Bearer <token>
+```
+
+Obtenha o token enviando as credenciais para `POST /auth/login`:
+
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"user":"admin","password":"admin"}'
 ```
 
 A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
@@ -47,6 +54,7 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 |---|---|---|
 | `API_USER` | `admin` | Usuario da API |
 | `API_PASSWORD` | `admin` | Senha da API |
+| `JWT_SECRET` | `change-me-in-production` | Chave usada para assinar tokens JWT |
 | `API_STORAGE_DIR` | `uploads` | Videos recebidos |
 | `API_OUTPUT_DIR` | `outputs` | ZIPs gerados |
 | `POSTGRES_DSN` | vazio | DSN completo opcional |
@@ -99,8 +107,7 @@ Quando as dependencias estiverem em containers, coloque-os na mesma rede Docker 
 
 ```bash
 curl -X POST http://localhost:8080/upload \
-  -H 'X-User: admin' \
-  -H 'X-Password: admin' \
+  -H 'Authorization: Bearer <token>' \
   -F 'video=@./video.mp4'
 ```
 
@@ -108,8 +115,7 @@ Consultar status:
 
 ```bash
 curl http://localhost:8080/api/status \
-  -H 'X-User: admin' \
-  -H 'X-Password: admin'
+  -H 'Authorization: Bearer <token>'
 ```
 
 ## CI/CD

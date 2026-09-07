@@ -11,6 +11,7 @@ servers:
 
 tags:
   - name: Health
+  - name: Authentication
   - name: Videos
 
 paths:
@@ -35,8 +36,7 @@ paths:
       description: Stores the video, creates a PostgreSQL job, and publishes it to RabbitMQ.
       operationId: uploadVideo
       security:
-        - userHeader: []
-          passwordHeader: []
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -71,14 +71,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Generate a JWT access token
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user, password]
+              properties:
+                user:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  format: password
+                  example: admin
+      responses:
+        '200':
+          description: JWT access token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token]
+                properties:
+                  token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /api/status:
     get:
       tags: [Videos]
       summary: List the authenticated user's video jobs
       operationId: listVideoJobs
       security:
-        - userHeader: []
-          passwordHeader: []
+        - bearerAuth: []
       responses:
         '200':
           description: Jobs ordered from newest to oldest
@@ -101,8 +134,7 @@ paths:
       summary: Download a processed ZIP file
       operationId: downloadZip
       security:
-        - userHeader: []
-          passwordHeader: []
+        - bearerAuth: []
       parameters:
         - name: filename
           in: path
@@ -130,21 +162,15 @@ paths:
 
 components:
   securitySchemes:
-    userHeader:
-      type: apiKey
-      in: header
-      name: X-User
-      description: Authenticated user name.
-    passwordHeader:
-      type: apiKey
-      in: header
-      name: X-Password
-      description: Authenticated user password.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
   schemas:
     VideoJob:
       type: object
-      required: [id, user, object_key, status, created_at]
+      required: [id, user, object_key, output_key, status, created_at]
       properties:
         id:
           type: string
@@ -155,6 +181,10 @@ components:
         object_key:
           type: string
           example: 1720000000000000000_video.mp4
+        output_key:
+          type: string
+          example: frames_1720000000000000000.zip
+          description: Processed ZIP filename used with the download endpoint.
         status:
           type: string
           enum: [Pendente, Concluido, Erro]
@@ -194,7 +224,7 @@ components:
           examples:
             missingHeaders:
               value:
-                error: informe X-User e X-Password
+                error: informe o token JWT
             invalidCredentials:
               value:
                 error: usuario ou senha invalidos

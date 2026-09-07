@@ -1,0 +1,71 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      API_USER: admin
+      API_PASSWORD: admin
+      API_STORAGE_DIR: /data/uploads
+      API_OUTPUT_DIR: /data/outputs
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: video_processor
+      POSTGRES_PASSWORD: video_processor
+      POSTGRES_DB: video_processor
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DATABASE: video_processor_logs
+      MONGO_COLLECTION: application_logs
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: guest
+      RABBITMQ_PASSWORD: guest
+    volumes:
+      - api-data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: video_processor
+      POSTGRES_PASSWORD: video_processor
+      POSTGRES_DB: video_processor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U video_processor -d video_processor"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  api-data:
+  postgres-data:
+  mongo-data:

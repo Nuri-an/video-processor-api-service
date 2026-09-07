@@ -1,0 +1,200 @@
+openapi: 3.0.3
+info:
+  title: Video Processor API
+  description: API Gateway for video upload, processing status, and ZIP download.
+  version: 1.0.0
+  contact:
+    name: Video Processor Team
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Videos
+
+paths:
+  /:
+    get:
+      tags: [Health]
+      summary: Check API availability
+      operationId: healthCheck
+      responses:
+        '200':
+          description: API is running
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: FIAP X API Gateway
+
+  /upload:
+    post:
+      tags: [Videos]
+      summary: Upload a video for processing
+      description: Stores the video, creates a PostgreSQL job, and publishes it to RabbitMQ.
+      operationId: uploadVideo
+      security:
+        - userHeader: []
+          passwordHeader: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [video]
+              properties:
+                video:
+                  type: string
+                  format: binary
+                  description: Video file. Supported extensions are mp4, avi, mov, mkv, wmv, flv, and webm.
+      responses:
+        '202':
+          description: Video accepted for asynchronous processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VideoJob'
+        '400':
+          description: Missing file or unsupported format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Storage, database, or queue failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/status:
+    get:
+      tags: [Videos]
+      summary: List the authenticated user's video jobs
+      operationId: listVideoJobs
+      security:
+        - userHeader: []
+          passwordHeader: []
+      responses:
+        '200':
+          description: Jobs ordered from newest to oldest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          description: Database failure
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /download/{filename}:
+    get:
+      tags: [Videos]
+      summary: Download a processed ZIP file
+      operationId: downloadZip
+      security:
+        - userHeader: []
+          passwordHeader: []
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          description: ZIP filename returned by the processing pipeline.
+          schema:
+            type: string
+            example: frames_1720000000000000000.zip
+      responses:
+        '200':
+          description: ZIP file
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: ZIP file not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  securitySchemes:
+    userHeader:
+      type: apiKey
+      in: header
+      name: X-User
+      description: Authenticated user name.
+    passwordHeader:
+      type: apiKey
+      in: header
+      name: X-Password
+      description: Authenticated user password.
+
+  schemas:
+    VideoJob:
+      type: object
+      required: [id, user, object_key, status, created_at]
+      properties:
+        id:
+          type: string
+          example: '1720000000000000000'
+        user:
+          type: string
+          example: admin
+        object_key:
+          type: string
+          example: 1720000000000000000_video.mp4
+        status:
+          type: string
+          enum: [Pendente, Concluido, Erro]
+          example: Pendente
+        created_at:
+          type: string
+          format: date-time
+
+    JobList:
+      type: object
+      required: [jobs, total]
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/VideoJob'
+        total:
+          type: integer
+          format: int32
+          example: 1
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: usuario ou senha invalidos
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingHeaders:
+              value:
+                error: informe X-User e X-Password
+            invalidCredentials:
+              value:
+                error: usuario ou senha invalidos

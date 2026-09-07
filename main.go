@@ -40,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	logger, err := NewRedisLogger(redisConfig())
+	logger, err := NewMongoLogger(mongoConfig())
 	if err != nil {
 		log.Fatal(err)
 	}

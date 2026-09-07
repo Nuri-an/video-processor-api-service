@@ -61,6 +61,7 @@ func (r *PostgresJobRepository) ListByUser(user string) ([]VideoJob, error) {
 		if err := rows.Scan(&job.ID, &job.User, &job.ObjectKey, &job.Status, &job.CreatedAt); err != nil {
 			return nil, err
 		}
+		job.OutputKey = outputKey(job.ID)
 		jobs = append(jobs, job)
 	}
 	return jobs, rows.Err()

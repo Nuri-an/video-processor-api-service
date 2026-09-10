@@ -12,6 +12,11 @@ API Gateway responsavel por receber videos, registrar tarefas e disponibilizar s
 - consultar status por usuario;
 - disponibilizar o Swagger da API.
 
+Quando o worker falhar no FFmpeg ou na geracao do ZIP, ele deve atualizar o job para
+`Erro` com a mensagem da falha e notificar o usuario por e-mail. Este repositorio
+fornece a operacao `UpdateStatus` e o `SMTPNotifier` para essa integracao; o consumo
+da fila e o processamento continuam no repositorio `video-processor-worker`.
+
 O processamento do video e executado pelo repositorio `video-processor-worker`.
 
 ## Rotas
@@ -31,12 +36,17 @@ As rotas de upload, status e download exigem:
 Authorization: Bearer <token>
 ```
 
-Obtenha o token enviando as credenciais para `POST /auth/login`:
+Obtenha o token enviando as credenciais para `POST /auth/login`. Os usuarios sao
+persistidos no PostgreSQL e as senhas sao armazenadas somente como hashes bcrypt.
+O usuario seed padrao `admin` e criado a partir de `API_PASSWORD` e `API_USER_EMAIL`.
+O codigo gera um hash bcrypt antes de persistir a senha no PostgreSQL.
+`API_USER` pode ser configurado para usar outro nome no seed.
+O claim `email` do JWT e enviado junto com cada job:
 
 ```bash
 curl -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"user":"admin","password":"admin"}'
+  -d '{"user":"admin","password":"<senha-configurada>"}'
 ```
 
 A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
@@ -52,26 +62,32 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 
 | Variavel | Padrao | Uso |
 |---|---|---|
-| `API_USER` | `admin` | Usuario da API |
-| `API_PASSWORD` | `admin` | Senha da API |
-| `JWT_SECRET` | `change-me-in-production` | Chave usada para assinar tokens JWT |
+| `API_USER` | `admin` | Usuario seed da API |
+| `API_PASSWORD` | vazio | Senha usada apenas para gerar o hash do usuario seed |
+| `API_USER_EMAIL` | vazio | E-mail do usuario para notificacoes do worker |
+| `JWT_SECRET` | vazio | Chave usada para assinar tokens JWT |
 | `API_STORAGE_DIR` | `uploads` | Videos recebidos |
 | `API_OUTPUT_DIR` | `outputs` | ZIPs gerados |
 | `POSTGRES_DSN` | vazio | DSN completo opcional |
 | `POSTGRES_HOST` | `localhost` | Host do PostgreSQL |
 | `POSTGRES_PORT` | `5432` | Porta do PostgreSQL |
 | `POSTGRES_USER` | `video_processor` | Usuario do PostgreSQL |
-| `POSTGRES_PASSWORD` | `video_processor` | Senha do PostgreSQL |
+| `POSTGRES_PASSWORD` | vazio | Senha do PostgreSQL |
 | `POSTGRES_DB` | `video_processor` | Banco do PostgreSQL |
 | `RABBITMQ_URL` | vazio | URL completa opcional |
 | `RABBITMQ_HOST` | `localhost` | Host do RabbitMQ |
 | `RABBITMQ_PORT` | `5672` | Porta do RabbitMQ |
-| `RABBITMQ_USER` | `video_processor` | Usuario do RabbitMQ |
-| `RABBITMQ_PASSWORD` | `video_processor` | Senha do RabbitMQ |
+| `RABBITMQ_USER` | vazio | Usuario do RabbitMQ |
+| `RABBITMQ_PASSWORD` | vazio | Senha do RabbitMQ |
 | `RABBITMQ_QUEUE` | `video_jobs` | Fila de jobs |
 | `MONGO_URI` | `mongodb://localhost:27017` | Conexao dos logs |
 | `MONGO_DATABASE` | `video_processor_logs` | Banco dos logs |
 | `MONGO_COLLECTION` | `application_logs` | Collection dos logs |
+| `SMTP_HOST` | `localhost` | Host do servidor SMTP |
+| `SMTP_PORT` | `25` | Porta do servidor SMTP |
+| `SMTP_USERNAME` | vazio | Usuario SMTP |
+| `SMTP_PASSWORD` | vazio | Senha SMTP |
+| `SMTP_FROM` | `noreply@video-processor.local` | Remetente das notificacoes |
 
 ## Execucao local
 
@@ -91,6 +107,15 @@ http://localhost:8080/swagger
 ```
 
 ## Docker
+
+Configure os segredos localmente antes de iniciar o stack:
+
+```bash
+cp .env.example .env
+# edite .env e preencha API_PASSWORD, JWT_SECRET, POSTGRES_PASSWORD,
+# RABBITMQ_USER e RABBITMQ_PASSWORD
+docker compose up -d --build
+```
 
 ```bash
 docker build -t video-processor-api .
@@ -116,6 +141,18 @@ Consultar status:
 ```bash
 curl http://localhost:8080/api/status \
   -H 'Authorization: Bearer <token>'
+```
+
+Exemplo de tratamento no worker:
+
+```go
+if err := processVideo(job); err != nil {
+  message := err.Error()
+  _ = jobs.UpdateStatus(job.ID, "Erro", message)
+  _ = notifier.NotifyProcessingError(job.User, job, err)
+  return
+}
+_ = jobs.UpdateStatus(job.ID, "Concluido", "")
 ```
 
 ## CI/CD

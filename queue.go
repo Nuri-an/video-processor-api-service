@@ -58,7 +58,7 @@ func rabbitConfig() RabbitConfig {
 	url := envOr("RABBITMQ_URL", fmt.Sprintf(
 		"amqp://%s:%s@%s:%s/",
 		envOr("RABBITMQ_USER", "video_processor"),
-		envOr("RABBITMQ_PASSWORD", "video_processor"),
+		envOr("RABBITMQ_PASSWORD", ""),
 		envOr("RABBITMQ_HOST", "localhost"),
 		envOr("RABBITMQ_PORT", "5672"),
 	))

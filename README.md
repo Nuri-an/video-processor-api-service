@@ -12,6 +12,11 @@ API Gateway responsavel por receber videos, registrar tarefas e disponibilizar s
 - consultar status por usuario;
 - disponibilizar o Swagger da API.
 
+Quando o worker falhar no FFmpeg ou na geracao do ZIP, ele deve atualizar o job para
+`Erro` com a mensagem da falha e notificar o usuario por e-mail. Este repositorio
+fornece a operacao `UpdateStatus` e o `SMTPNotifier` para essa integracao; o consumo
+da fila e o processamento continuam no repositorio `video-processor-worker`.
+
 O processamento do video e executado pelo repositorio `video-processor-worker`.
 
 ## Rotas
@@ -31,7 +36,10 @@ As rotas de upload, status e download exigem:
 Authorization: Bearer <token>
 ```
 
-Obtenha o token enviando as credenciais para `POST /auth/login`:
+Obtenha o token enviando as credenciais para `POST /auth/login`. Os usuarios sao
+persistidos no PostgreSQL e as senhas sao armazenadas somente como hashes bcrypt.
+O usuario inicial e criado a partir de `API_USER`, `API_PASSWORD_HASH` e `API_USER_EMAIL`.
+O claim `email` do JWT e enviado junto com cada job:
 
 ```bash
 curl -X POST http://localhost:8080/auth/login \
@@ -53,8 +61,9 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 | Variavel | Padrao | Uso |
 |---|---|---|
 | `API_USER` | `admin` | Usuario da API |
-| `API_PASSWORD` | `admin` | Senha da API |
-| `JWT_SECRET` | `change-me-in-production` | Chave usada para assinar tokens JWT |
+| `API_PASSWORD_HASH` | vazio | Hash bcrypt da senha do usuario inicial |
+| `API_USER_EMAIL` | vazio | E-mail do usuario para notificacoes do worker |
+| `JWT_SECRET` | vazio | Chave usada para assinar tokens JWT |
 | `API_STORAGE_DIR` | `uploads` | Videos recebidos |
 | `API_OUTPUT_DIR` | `outputs` | ZIPs gerados |
 | `POSTGRES_DSN` | vazio | DSN completo opcional |
@@ -72,6 +81,11 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 | `MONGO_URI` | `mongodb://localhost:27017` | Conexao dos logs |
 | `MONGO_DATABASE` | `video_processor_logs` | Banco dos logs |
 | `MONGO_COLLECTION` | `application_logs` | Collection dos logs |
+| `SMTP_HOST` | `localhost` | Host do servidor SMTP |
+| `SMTP_PORT` | `25` | Porta do servidor SMTP |
+| `SMTP_USERNAME` | vazio | Usuario SMTP |
+| `SMTP_PASSWORD` | vazio | Senha SMTP |
+| `SMTP_FROM` | `noreply@video-processor.local` | Remetente das notificacoes |
 
 ## Execucao local
 
@@ -116,6 +130,18 @@ Consultar status:
 ```bash
 curl http://localhost:8080/api/status \
   -H 'Authorization: Bearer <token>'
+```
+
+Exemplo de tratamento no worker:
+
+```go
+if err := processVideo(job); err != nil {
+  message := err.Error()
+  _ = jobs.UpdateStatus(job.ID, "Erro", message)
+  _ = notifier.NotifyProcessingError(job.User, job, err)
+  return
+}
+_ = jobs.UpdateStatus(job.ID, "Concluido", "")
 ```
 
 ## CI/CD

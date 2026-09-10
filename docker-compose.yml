@@ -5,7 +5,9 @@ services:
       - "8080:8080"
     environment:
       API_USER: admin
-      API_PASSWORD: admin
+      API_PASSWORD_HASH: "$$2y$$10$$hkSNxIe2Wl/JwtBDvYOwQeCqLHjaZP7yc27v90XOPBo1xICuqKPuK"
+      API_USER_EMAIL: teste@example.com
+      JWT_SECRET: local-development-secret-change-me
       API_STORAGE_DIR: /data/uploads
       API_OUTPUT_DIR: /data/outputs
       POSTGRES_HOST: postgres
@@ -65,7 +67,18 @@ services:
       timeout: 3s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   api-data:
+    name: video-processor-data
   postgres-data:
   mongo-data:
+
+networks:
+  default:
+    name: video-processor

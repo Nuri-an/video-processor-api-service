@@ -17,9 +17,11 @@ import (
 type VideoJob struct {
 	ID        string    `json:"id"`
 	User      string    `json:"user"`
+	Email     string    `json:"email,omitempty"`
 	ObjectKey string    `json:"object_key"`
 	OutputKey string    `json:"output_key"`
 	Status    string    `json:"status"`
+	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -34,6 +36,9 @@ type API struct {
 var openAPISpec []byte
 
 func main() {
+	if envOr("JWT_SECRET", "") == "" {
+		log.Fatal("JWT_SECRET deve ser configurado")
+	}
 	jobs, err := NewPostgresJobRepository(postgresConfig())
 	if err != nil {
 		log.Fatal(err)
@@ -73,7 +78,7 @@ func main() {
 	r.GET("/swagger/openapi.yaml", func(c *gin.Context) {
 		c.Data(http.StatusOK, "application/yaml; charset=utf-8", openAPISpec)
 	})
-	r.POST("/auth/login", login)
+	r.POST("/auth/login", api.login)
 
 	protected := r.Group("/")
 	protected.Use(jwtAuthMiddleware())
@@ -129,7 +134,7 @@ func (api API) upload(c *gin.Context) {
 		return
 	}
 
-	job := VideoJob{ID: jobID, User: user, ObjectKey: objectKey, OutputKey: outputKey(jobID), Status: "Pendente", CreatedAt: time.Now()}
+	job := VideoJob{ID: jobID, User: user, Email: c.GetString("email"), ObjectKey: objectKey, OutputKey: outputKey(jobID), Status: "Pendente", CreatedAt: time.Now()}
 	if err := api.jobs.Save(job); err != nil {
 		api.logger.Log("job_database_error", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao registrar tarefa"})
@@ -158,6 +163,15 @@ func (api API) status(c *gin.Context) {
 
 func (api API) download(c *gin.Context) {
 	filename := filepath.Base(c.Param("filename"))
+	owned, err := api.jobs.HasOutputForUser(filename, c.GetString("user"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao validar arquivo"})
+		return
+	}
+	if !owned {
+		c.JSON(http.StatusNotFound, gin.H{"error": "arquivo nao encontrado"})
+		return
+	}
 	path := filepath.Join(envOr("API_OUTPUT_DIR", "outputs"), filename)
 	if _, err := os.Stat(path); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "arquivo nao encontrado"})
@@ -170,7 +184,7 @@ func outputKey(jobID string) string {
 	return "frames_" + jobID + ".zip"
 }
 
-func login(c *gin.Context) {
+func (api API) login(c *gin.Context) {
 	var credentials struct {
 		User     string `json:"user"`
 		Password string `json:"password"`
@@ -186,18 +200,20 @@ func login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "usuario ou senha invalidos"})
 		return
 	}
-	if user != envOr("API_USER", "admin") || password != envOr("API_PASSWORD", "admin") {
+	authenticatedUser, err := api.jobs.AuthenticateUser(user, password)
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "usuario ou senha invalidos"})
 		return
 	}
 
 	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": user,
+		"sub": authenticatedUser.Username,
+		"email": authenticatedUser.Email,
 		"iat": now.Unix(),
 		"exp": now.Add(24 * time.Hour).Unix(),
 	})
-	signedToken, err := token.SignedString([]byte(envOr("JWT_SECRET", "change-me-in-production")))
+	signedToken, err := token.SignedString([]byte(envOr("JWT_SECRET", "")))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao gerar token"})
 		return
@@ -217,7 +233,7 @@ func jwtAuthMiddleware() gin.HandlerFunc {
 			if token.Method != jwt.SigningMethodHS256 {
 				return nil, fmt.Errorf("metodo de assinatura invalido")
 			}
-			return []byte(envOr("JWT_SECRET", "change-me-in-production")), nil
+			return []byte(envOr("JWT_SECRET", "")), nil
 		})
 		if err != nil || !token.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token JWT invalido ou expirado"})
@@ -231,6 +247,9 @@ func jwtAuthMiddleware() gin.HandlerFunc {
 			return
 		}
 		c.Set("user", user)
+		if email, emailOK := claims["email"].(string); emailOK {
+			c.Set("email", email)
+		}
 		c.Next()
 	}
 }

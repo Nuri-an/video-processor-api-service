@@ -38,13 +38,15 @@ Authorization: Bearer <token>
 
 Obtenha o token enviando as credenciais para `POST /auth/login`. Os usuarios sao
 persistidos no PostgreSQL e as senhas sao armazenadas somente como hashes bcrypt.
-O usuario inicial e criado a partir de `API_USER`, `API_PASSWORD_HASH` e `API_USER_EMAIL`.
+O usuario seed padrao `admin` e criado a partir de `API_PASSWORD` e `API_USER_EMAIL`.
+O codigo gera um hash bcrypt antes de persistir a senha no PostgreSQL.
+`API_USER` pode ser configurado para usar outro nome no seed.
 O claim `email` do JWT e enviado junto com cada job:
 
 ```bash
 curl -X POST http://localhost:8080/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"user":"admin","password":"admin"}'
+  -d '{"user":"admin","password":"<senha-configurada>"}'
 ```
 
 A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
@@ -60,8 +62,8 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 
 | Variavel | Padrao | Uso |
 |---|---|---|
-| `API_USER` | `admin` | Usuario da API |
-| `API_PASSWORD_HASH` | vazio | Hash bcrypt da senha do usuario inicial |
+| `API_USER` | `admin` | Usuario seed da API |
+| `API_PASSWORD` | vazio | Senha usada apenas para gerar o hash do usuario seed |
 | `API_USER_EMAIL` | vazio | E-mail do usuario para notificacoes do worker |
 | `JWT_SECRET` | vazio | Chave usada para assinar tokens JWT |
 | `API_STORAGE_DIR` | `uploads` | Videos recebidos |
@@ -70,13 +72,13 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 | `POSTGRES_HOST` | `localhost` | Host do PostgreSQL |
 | `POSTGRES_PORT` | `5432` | Porta do PostgreSQL |
 | `POSTGRES_USER` | `video_processor` | Usuario do PostgreSQL |
-| `POSTGRES_PASSWORD` | `video_processor` | Senha do PostgreSQL |
+| `POSTGRES_PASSWORD` | vazio | Senha do PostgreSQL |
 | `POSTGRES_DB` | `video_processor` | Banco do PostgreSQL |
 | `RABBITMQ_URL` | vazio | URL completa opcional |
 | `RABBITMQ_HOST` | `localhost` | Host do RabbitMQ |
 | `RABBITMQ_PORT` | `5672` | Porta do RabbitMQ |
-| `RABBITMQ_USER` | `video_processor` | Usuario do RabbitMQ |
-| `RABBITMQ_PASSWORD` | `video_processor` | Senha do RabbitMQ |
+| `RABBITMQ_USER` | vazio | Usuario do RabbitMQ |
+| `RABBITMQ_PASSWORD` | vazio | Senha do RabbitMQ |
 | `RABBITMQ_QUEUE` | `video_jobs` | Fila de jobs |
 | `MONGO_URI` | `mongodb://localhost:27017` | Conexao dos logs |
 | `MONGO_DATABASE` | `video_processor_logs` | Banco dos logs |
@@ -105,6 +107,15 @@ http://localhost:8080/swagger
 ```
 
 ## Docker
+
+Configure os segredos localmente antes de iniciar o stack:
+
+```bash
+cp .env.example .env
+# edite .env e preencha API_PASSWORD, JWT_SECRET, POSTGRES_PASSWORD,
+# RABBITMQ_USER e RABBITMQ_PASSWORD
+docker compose up -d --build
+```
 
 ```bash
 docker build -t video-processor-api .

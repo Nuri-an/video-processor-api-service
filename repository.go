@@ -50,7 +50,7 @@ func (r *PostgresJobRepository) Init() error {
 	if err != nil {
 		return err
 	}
-	if err := r.bootstrapUser(); err != nil {
+	if err := r.seedDefaultUser(); err != nil {
 		return err
 	}
 
@@ -75,16 +75,20 @@ func (r *PostgresJobRepository) Init() error {
 	return err
 }
 
-func (r *PostgresJobRepository) bootstrapUser() error {
-	username := envOr("API_USER", "")
-	passwordHash := envOr("API_PASSWORD_HASH", "")
-	if username == "" || passwordHash == "" {
-		return fmt.Errorf("API_USER e API_PASSWORD_HASH devem ser configurados")
+func (r *PostgresJobRepository) seedDefaultUser() error {
+	username := envOr("API_USER", "admin")
+	password := envOr("API_PASSWORD", "")
+	if password == "" {
+		return fmt.Errorf("API_PASSWORD deve ser configurado para criar o usuario seed")
 	}
-	_, err := r.db.Exec(`INSERT INTO users (username, email, password_hash)
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("erro ao gerar hash da senha seed: %w", err)
+	}
+	_, err = r.db.Exec(`INSERT INTO users (username, email, password_hash)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (username) DO UPDATE SET email = EXCLUDED.email, password_hash = EXCLUDED.password_hash`,
-		username, envOr("API_USER_EMAIL", ""), passwordHash)
+		ON CONFLICT (username) DO NOTHING`,
+		username, envOr("API_USER_EMAIL", ""), string(passwordHash))
 	return err
 }
 
@@ -150,7 +154,7 @@ func postgresConfig() PostgresConfig {
 		envOr("POSTGRES_HOST", "localhost"),
 		envOr("POSTGRES_PORT", "5432"),
 		envOr("POSTGRES_USER", "video_processor"),
-		envOr("POSTGRES_PASSWORD", "video_processor"),
+		envOr("POSTGRES_PASSWORD", ""),
 		envOr("POSTGRES_DB", "video_processor"),
 	))
 	return PostgresConfig{DSN: dsn}

@@ -5,23 +5,23 @@ services:
       - "8080:8080"
     environment:
       API_USER: admin
-      API_PASSWORD_HASH: "$$2y$$10$$hkSNxIe2Wl/JwtBDvYOwQeCqLHjaZP7yc27v90XOPBo1xICuqKPuK"
+      API_PASSWORD: "${API_PASSWORD:?API_PASSWORD is required}"
       API_USER_EMAIL: teste@example.com
-      JWT_SECRET: local-development-secret-change-me
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
       API_STORAGE_DIR: /data/uploads
       API_OUTPUT_DIR: /data/outputs
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: video_processor
-      POSTGRES_PASSWORD: video_processor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
       MONGO_URI: mongodb://mongo:27017
       MONGO_DATABASE: video_processor_logs
       MONGO_COLLECTION: application_logs
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USER: guest
-      RABBITMQ_PASSWORD: guest
+      RABBITMQ_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
+      RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
     volumes:
       - api-data:/data
     depends_on:
@@ -37,7 +37,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: video_processor
-      POSTGRES_PASSWORD: video_processor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
     ports:
       - "5432:5432"
@@ -58,6 +58,9 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
     ports:
       - "5672:5672"
       - "15672:15672"

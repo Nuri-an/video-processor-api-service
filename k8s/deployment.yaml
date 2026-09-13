@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: video-processor-api
+  namespace: video-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: video-processor-api
+  template:
+    metadata:
+      labels:
+        app: video-processor-api
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: video-processor-api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: API_USER
+              value: admin
+            - name: API_USER_EMAIL
+              value: teste@example.com
+            - name: API_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: video-processor-secrets
+                  key: api-password
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: video-processor-secrets
+                  key: jwt-secret
+            - name: API_STORAGE_DIR
+              value: /data/uploads
+            - name: API_OUTPUT_DIR
+              value: /data/outputs
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_USER
+              value: video_processor
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: video-processor-secrets
+                  key: postgres-password
+            - name: POSTGRES_DB
+              value: video_processor
+            - name: MONGO_URI
+              value: mongodb://mongo:27017
+            - name: MONGO_DATABASE
+              value: video_processor_logs
+            - name: MONGO_COLLECTION
+              value: application_logs
+            - name: RABBITMQ_HOST
+              value: rabbitmq
+            - name: RABBITMQ_PORT
+              value: "5672"
+            - name: RABBITMQ_USER
+              valueFrom:
+                secretKeyRef:
+                  name: video-processor-secrets
+                  key: rabbitmq-user
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: video-processor-secrets
+                  key: rabbitmq-password
+          volumeMounts:
+            - name: shared-data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: shared-data
+          persistentVolumeClaim:
+            claimName: video-processor-data

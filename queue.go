@@ -57,7 +57,7 @@ func NewRabbitQueue(config RabbitConfig) (*RabbitQueue, error) {
 }
 
 func (q *RabbitQueue) Init() error {
-	if _, err := q.channel.ExchangeDeclare(q.config.DLX, "direct", true, false, false, false, nil); err != nil {
+	if err := q.channel.ExchangeDeclare(q.config.DLX, "direct", true, false, false, false, nil); err != nil {
 		return err
 	}
 	deadLetterQueue := q.config.Queue + ".dead"
@@ -101,11 +101,11 @@ func (q *RabbitQueue) Publish(job VideoJob) error {
 
 func rabbitConfig() RabbitConfig {
 	url := envOr("RABBITMQ_URL", fmt.Sprintf(
-		"amqp://%s:%s@%s:%s/",
+		"amqps://%s:%s@%s:%s/",
 		envOr("RABBITMQ_USER", "video_processor"),
 		envOr("RABBITMQ_PASSWORD", ""),
 		envOr("RABBITMQ_HOST", "localhost"),
-		envOr("RABBITMQ_PORT", "5672"),
+		envOr("RABBITMQ_PORT", "5671"),
 	))
 	return RabbitConfig{
 		URL:           url,

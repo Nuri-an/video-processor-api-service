@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	_ "embed"
 	"fmt"
 	"log"
@@ -68,6 +69,7 @@ func main() {
 	if err := api.queue.Init(); err != nil {
 		log.Fatal(err)
 	}
+	startOutboxDispatcher(context.Background(), api.jobs, api.queue)
 	if err := api.logger.Init(); err != nil {
 		log.Fatal(err)
 	}
@@ -135,17 +137,12 @@ func (api API) upload(c *gin.Context) {
 	}
 
 	job := VideoJob{ID: jobID, User: user, Email: c.GetString("email"), ObjectKey: objectKey, OutputKey: outputKey(jobID), Status: "Pendente", CreatedAt: time.Now()}
-	if err := api.jobs.Save(job); err != nil {
+	if err := api.jobs.CreateJob(job); err != nil {
 		api.logger.Log("job_database_error", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao registrar tarefa"})
 		return
 	}
-	if err := api.queue.Publish(job); err != nil {
-		api.logger.Log("job_queue_error", jobID, err.Error())
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao publicar tarefa"})
-		return
-	}
-	api.logger.Log("job_published", job.ID, "video job published")
+	api.logger.Log("job_queued", job.ID, "video job stored in outbox")
 
 	c.JSON(http.StatusAccepted, job)
 }

@@ -2,8 +2,10 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -12,7 +14,11 @@ import (
 type JobRepository interface {
 	Init() error
 	Save(VideoJob) error
+	CreateJob(VideoJob) error
 	UpdateStatus(id, status, errorMessage string) error
+	ListPendingOutbox(limit int) ([]OutboxEntry, error)
+	MarkOutboxSent(id int64) error
+	MarkOutboxFailed(id int64, attempts int, nextAttemptAt time.Time, reason string) error
 	ListByUser(string) ([]VideoJob, error)
 	AuthenticateUser(username, password string) (User, error)
 	HasOutputForUser(filename, username string) (bool, error)
@@ -25,6 +31,13 @@ type User struct {
 }
 
 type PostgresConfig struct{ DSN string }
+
+type OutboxEntry struct {
+	ID            int64
+	Job           VideoJob
+	Attempts      int
+	NextAttemptAt time.Time
+}
 
 type PostgresJobRepository struct{ db *sql.DB }
 
@@ -72,6 +85,18 @@ func (r *PostgresJobRepository) Init() error {
 		return err
 	}
 	_, err = r.db.Exec(`ALTER TABLE video_jobs ADD COLUMN IF NOT EXISTS email TEXT NOT NULL DEFAULT ''`)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(`CREATE TABLE IF NOT EXISTS job_outbox (
+		id BIGSERIAL PRIMARY KEY,
+		job_id TEXT NOT NULL UNIQUE REFERENCES video_jobs(id),
+		payload JSONB NOT NULL,
+		attempts INTEGER NOT NULL DEFAULT 0,
+		next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+		last_error TEXT NOT NULL DEFAULT '',
+		sent_at TIMESTAMPTZ
+	)`)
 	return err
 }
 
@@ -116,15 +141,69 @@ func (r *PostgresJobRepository) HasOutputForUser(filename, username string) (boo
 }
 
 func (r *PostgresJobRepository) Save(job VideoJob) error {
-	_, err := r.db.Exec(`INSERT INTO video_jobs (id, username, email, object_key, status, error_message, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`, job.ID, job.User, job.Email, job.ObjectKey, job.Status, job.Error, job.CreatedAt)
-	return err
+	return r.CreateJob(job)
+}
+
+func (r *PostgresJobRepository) CreateJob(job VideoJob) error {
+	payload, err := json.Marshal(job)
+	if err != nil {
+		return err
+	}
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`INSERT INTO video_jobs (id, username, email, object_key, status, error_message, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`, job.ID, job.User, job.Email, job.ObjectKey, job.Status, job.Error, job.CreatedAt); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO job_outbox (job_id, payload) VALUES ($1, $2)`, job.ID, payload); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *PostgresJobRepository) UpdateStatus(id, status, errorMessage string) error {
 	_, err := r.db.Exec(`UPDATE video_jobs
 		SET status = $1, error_message = $2, updated_at = NOW()
 		WHERE id = $3`, status, errorMessage, id)
+	return err
+}
+
+func (r *PostgresJobRepository) ListPendingOutbox(limit int) ([]OutboxEntry, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.db.Query(`SELECT id, payload, attempts, next_attempt_at
+		FROM job_outbox WHERE sent_at IS NULL AND next_attempt_at <= NOW()
+		ORDER BY id LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := make([]OutboxEntry, 0)
+	for rows.Next() {
+		var entry OutboxEntry
+		var payload []byte
+		if err := rows.Scan(&entry.ID, &payload, &entry.Attempts, &entry.NextAttemptAt); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(payload, &entry.Job); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (r *PostgresJobRepository) MarkOutboxSent(id int64) error {
+	_, err := r.db.Exec(`UPDATE job_outbox SET sent_at = NOW() WHERE id = $1`, id)
+	return err
+}
+
+func (r *PostgresJobRepository) MarkOutboxFailed(id int64, attempts int, nextAttemptAt time.Time, reason string) error {
+	_, err := r.db.Exec(`UPDATE job_outbox SET attempts = $1, next_attempt_at = $2, last_error = $3 WHERE id = $4`, attempts, nextAttemptAt, reason, id)
 	return err
 }
 

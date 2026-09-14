@@ -80,6 +80,8 @@ A especificacao esta em [docs/openapi.yaml](docs/openapi.yaml).
 | `RABBITMQ_USER` | vazio | Usuario do RabbitMQ |
 | `RABBITMQ_PASSWORD` | vazio | Senha do RabbitMQ |
 | `RABBITMQ_QUEUE` | `video_jobs` | Fila de jobs |
+| `RABBITMQ_DLX` | `video_jobs.dlx` | Exchange de dead-letter |
+| `RABBITMQ_CONFIRM_TIMEOUT` | `5s` | Timeout dos publisher confirms |
 | `MONGO_URI` | `mongodb://localhost:27017` | Conexao dos logs |
 | `MONGO_DATABASE` | `video_processor_logs` | Banco dos logs |
 | `MONGO_COLLECTION` | `application_logs` | Collection dos logs |
@@ -127,6 +129,19 @@ docker run --name video-api -p 8080:8080 \
 ```
 
 Quando as dependencias estiverem em containers, coloque-os na mesma rede Docker e use seus nomes como hosts.
+
+Os jobs sao gravados em uma outbox transacional antes da resposta do upload. Um
+dispatcher reconcilia a outbox e somente marca a mensagem como enviada depois do
+publisher confirm do RabbitMQ.
+
+## Kubernetes
+
+Os manifests para Kubernetes estao em [k8s/](k8s/). Eles incluem a API,
+PostgreSQL, RabbitMQ, MongoDB, Mailpit, PVCs, Services, PDB e HPA da API.
+
+Para executar localmente ou em producao, siga [k8s/README.md](k8s/README.md).
+Use o overlay `local` para a imagem local e o overlay `prod` para
+`nuriancoelho/video-processor-api:latest`.
 
 ## Testar upload
 

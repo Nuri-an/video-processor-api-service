@@ -37,7 +37,7 @@ Execute os comandos a partir de `video-processor-api`:
 ```bash
 kubectl config use-context docker-desktop
 cp k8s/env/local.env.example k8s/env/local.env
-kubectl apply --load-restrictor LoadRestrictionsNone -k k8s/overlays/local
+kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/local | kubectl apply -f -
 ```
 
 Este procedimento instala a API e suas dependencias.
@@ -47,7 +47,7 @@ Para producao, copie o exemplo, preencha valores reais e aplique o overlay:
 ```bash
 cp k8s/env/production.env.example k8s/env/production.env
 # edite k8s/env/production.env com valores fortes
-kubectl apply --load-restrictor LoadRestrictionsNone -k k8s/overlays/prod
+kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/prod | kubectl apply -f -
 ```
 
 Nunca versione `local.env` ou `production.env`. Em um ambiente de producao,

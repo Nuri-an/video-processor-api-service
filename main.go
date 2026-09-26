@@ -40,50 +40,73 @@ func main() {
 	if envOr("JWT_SECRET", "") == "" {
 		log.Fatal("JWT_SECRET deve ser configurado")
 	}
+
 	jobs, err := NewPostgresJobRepository(postgresConfig())
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	queue, err := NewRabbitQueue(rabbitConfig())
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	logger, err := NewMongoLogger(mongoConfig())
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	storage, err := NewS3Storage()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	api := API{
-		storage: LocalStorage{Root: envOr("API_STORAGE_DIR", "uploads")},
-		queue:   queue,
+		storage: storage,
 		jobs:    jobs,
+		queue:   queue,
 		logger:  logger,
 	}
 
 	if err := api.storage.Init(); err != nil {
 		log.Fatal(err)
 	}
+
 	if err := api.jobs.Init(); err != nil {
 		log.Fatal(err)
 	}
+
 	if err := api.queue.Init(); err != nil {
 		log.Fatal(err)
 	}
+
 	startOutboxDispatcher(context.Background(), api.jobs, api.queue)
+
 	if err := api.logger.Init(); err != nil {
 		log.Fatal(err)
 	}
 
 	r := gin.Default()
-	r.GET("/", func(c *gin.Context) { c.String(http.StatusOK, "FIAP X API Gateway") })
-	r.GET("/swagger", swaggerUI)
-	r.GET("/swagger/openapi.yaml", func(c *gin.Context) {
-		c.Data(http.StatusOK, "application/yaml; charset=utf-8", openAPISpec)
+
+	r.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "FIAP X API Gateway")
 	})
+
+	r.GET("/swagger", swaggerUI)
+
+	r.GET("/swagger/openapi.yaml", func(c *gin.Context) {
+		c.Data(
+			http.StatusOK,
+			"application/yaml; charset=utf-8",
+			openAPISpec,
+		)
+	})
+
 	r.POST("/auth/login", api.login)
 
 	protected := r.Group("/")
 	protected.Use(jwtAuthMiddleware())
+
 	protected.POST("/upload", api.upload)
 	protected.GET("/api/status", api.status)
 	protected.GET("/download/:filename", api.download)
@@ -129,7 +152,7 @@ func (api API) upload(c *gin.Context) {
 	}
 
 	jobID := fmt.Sprintf("%d", time.Now().UnixNano())
-	objectKey := filepath.Join(jobID+"_"+filepath.Base(header.Filename))
+	objectKey := "videos/" + jobID + "_" + filepath.Base(header.Filename)
 	if err := api.storage.Put(objectKey, file); err != nil {
 		api.logger.Log("upload_storage_error", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "erro ao armazenar video"})
@@ -169,12 +192,26 @@ func (api API) download(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "arquivo nao encontrado"})
 		return
 	}
-	path := filepath.Join(envOr("API_OUTPUT_DIR", "outputs"), filename)
-	if _, err := os.Stat(path); err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "arquivo nao encontrado"})
+	objectKey := "outputs/" + filename 
+	
+	reader, err := api.storage.Get(objectKey)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "arquivo não encontrado",
+		})
 		return
 	}
-	c.FileAttachment(path, filename)
+
+	defer reader.Close()
+
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.DataFromReader(
+		http.StatusOK,
+		-1,
+		"application/zip",
+		reader,
+		nil,
+	)
 }
 
 func outputKey(jobID string) string {

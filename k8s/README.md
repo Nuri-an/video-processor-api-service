@@ -37,7 +37,8 @@ Execute os comandos a partir de `video-processor-api`:
 ```bash
 kubectl config use-context docker-desktop
 cp k8s/env/local.env.example k8s/env/local.env
-kubectl kustomize --load-restrictor LoadRestrictionsNone k8s/overlays/local | kubectl apply -f -
+cd k8s
+kubectl kustomize --load-restrictor LoadRestrictionsNone overlays/local | kubectl apply -f -
 ```
 
 Este procedimento instala a API e suas dependencias.

@@ -101,7 +101,7 @@ func (q *RabbitQueue) Publish(job VideoJob) error {
 
 func rabbitConfig() RabbitConfig {
 	url := envOr("RABBITMQ_URL", fmt.Sprintf(
-		"amqps://%s:%s@%s:%s/",
+		"amqp://%s:%s@%s:%s/",
 		envOr("RABBITMQ_USER", "video_processor"),
 		envOr("RABBITMQ_PASSWORD", ""),
 		envOr("RABBITMQ_HOST", "localhost"),

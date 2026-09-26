@@ -8,22 +8,32 @@ services:
       API_PASSWORD: "${API_PASSWORD:?API_PASSWORD is required}"
       API_USER_EMAIL: teste@example.com
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
-      API_STORAGE_DIR: /data/uploads
-      API_OUTPUT_DIR: /data/outputs
+
+      # S3
+      S3_ENDPOINT: http://s3:8333
+      S3_BUCKET: video-processor
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio123
+      S3_REGION: us-east-1
+
+      # PostgreSQL
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: video_processor
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
+
+      # MongoDB
       MONGO_URI: mongodb://mongo:27017
       MONGO_DATABASE: video_processor_logs
       MONGO_COLLECTION: application_logs
+
+      # RabbitMQ
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
       RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
-    volumes:
-      - api-data:/data
+
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,6 +41,9 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
+      s3:
+        condition: service_started
+
     restart: unless-stopped
 
   postgres:
@@ -76,11 +89,25 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  s3:
+    image: chrislusf/seaweedfs:latest
+    command: mini -dir=/data
+    environment:
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+      S3_BUCKET: video-processor
+    ports:
+      - "8333:8333"
+    volumes:
+      - s3-data:/data
+    restart: unless-stopped
+
 volumes:
   api-data:
     name: video-processor-data
   postgres-data:
   mongo-data:
+  s3-data:
 
 networks:
   default:

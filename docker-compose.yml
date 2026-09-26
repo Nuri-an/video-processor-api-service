@@ -8,32 +8,22 @@ services:
       API_PASSWORD: "${API_PASSWORD:?API_PASSWORD is required}"
       API_USER_EMAIL: teste@example.com
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
-
-      # S3
-      S3_ENDPOINT: http://s3:8333
-      S3_BUCKET: video-processor
-      S3_ACCESS_KEY: minio
-      S3_SECRET_KEY: minio123
-      S3_REGION: us-east-1
-
-      # PostgreSQL
+      API_STORAGE_DIR: /data/uploads
+      API_OUTPUT_DIR: /data/outputs
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: video_processor
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
-
-      # MongoDB
       MONGO_URI: mongodb://mongo:27017
       MONGO_DATABASE: video_processor_logs
       MONGO_COLLECTION: application_logs
-
-      # RabbitMQ
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
       RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
-
+    volumes:
+      - api-data:/data
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,9 +31,6 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_healthy
-      s3:
-        condition: service_started
-
     restart: unless-stopped
 
   postgres:
@@ -89,17 +76,46 @@ services:
       - "1025:1025"
       - "8025:8025"
 
-  s3:
-    image: chrislusf/seaweedfs:latest
-    command: mini -dir=/data
-    environment:
-      AWS_ACCESS_KEY_ID: minio
-      AWS_SECRET_ACCESS_KEY: minio123
-      S3_BUCKET: video-processor
+  prometheus:
+    image: prom/prometheus:latest
     ports:
-      - "8333:8333"
+      - "9090:9090"
     volumes:
-      - s3-data:/data
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:latest
+    environment:
+      RABBIT_URL: http://rabbitmq:15672
+      RABBIT_USER: "${RABBITMQ_USER}"
+      RABBIT_PASSWORD: "${RABBITMQ_PASSWORD}"
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://video_processor:${POSTGRES_PASSWORD}@postgres:5432/video_processor?sslmode=disable
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
     restart: unless-stopped
 
 volumes:
@@ -107,7 +123,7 @@ volumes:
     name: video-processor-data
   postgres-data:
   mongo-data:
-  s3-data:
+  grafana-data:
 
 networks:
   default:

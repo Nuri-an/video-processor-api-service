@@ -1,0 +1,36 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../namespace.yaml
+  - ../../postgres.yaml
+  - ../../rabbitmq.yaml
+  - ../../mongo.yaml
+  - ../../mailpit.yaml
+  - ../../pvc.yaml
+  - ../../deployment.yaml
+  - ../../service.yaml
+  - ../../pdb.yaml
+  - ../../hpa.yaml
+
+secretGenerator:
+  - name: video-processor-secrets
+    envs:
+      - ../../env/production.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+images:
+  - name: video-processor-api
+    newName: nuriancoelho/video-processor-api
+    newTag: latest
+
+patches:
+  - target:
+      kind: Deployment
+      name: video-processor-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always

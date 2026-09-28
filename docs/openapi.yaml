@@ -189,6 +189,10 @@ components:
           type: string
           enum: [Pendente, Concluido, Erro]
           example: Pendente
+        error:
+          type: string
+          nullable: true
+          description: Processing failure message when status is Erro.
         created_at:
           type: string
           format: date-time

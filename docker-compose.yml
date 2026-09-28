@@ -5,21 +5,23 @@ services:
       - "8080:8080"
     environment:
       API_USER: admin
-      API_PASSWORD: admin
+      API_PASSWORD: "${API_PASSWORD:?API_PASSWORD is required}"
+      API_USER_EMAIL: teste@example.com
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is required}"
       API_STORAGE_DIR: /data/uploads
       API_OUTPUT_DIR: /data/outputs
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: video_processor
-      POSTGRES_PASSWORD: video_processor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
       MONGO_URI: mongodb://mongo:27017
       MONGO_DATABASE: video_processor_logs
       MONGO_COLLECTION: application_logs
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      RABBITMQ_USER: guest
-      RABBITMQ_PASSWORD: guest
+      RABBITMQ_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
+      RABBITMQ_PASSWORD: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
     volumes:
       - api-data:/data
     depends_on:
@@ -35,7 +37,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: video_processor
-      POSTGRES_PASSWORD: video_processor
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
       POSTGRES_DB: video_processor
     ports:
       - "5432:5432"
@@ -56,6 +58,9 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.12-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:?RABBITMQ_USER is required}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -65,7 +70,61 @@ services:
       timeout: 3s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:latest
+    environment:
+      RABBIT_URL: http://rabbitmq:15672
+      RABBIT_USER: "${RABBITMQ_USER}"
+      RABBIT_PASSWORD: "${RABBITMQ_PASSWORD}"
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://video_processor:${POSTGRES_PASSWORD}@postgres:5432/video_processor?sslmode=disable
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: unless-stopped
+
 volumes:
   api-data:
+    name: video-processor-data
   postgres-data:
   mongo-data:
+  grafana-data:
+
+networks:
+  default:
+    name: video-processor
